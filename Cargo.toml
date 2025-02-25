@@ -1,0 +1,11 @@
+[package]
+name = "news-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+colored = "3.0.0"
+thiserror = "2.0.11"
+reqwest = { version = "0.10", features = ["blocking","json"] }
+serde = { version = "1.0.217", features = ["derive"] }
+dotenv = "0.15.0"

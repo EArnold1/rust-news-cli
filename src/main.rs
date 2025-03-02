@@ -1,7 +1,8 @@
-use std::{env, error::Error};
+use std::env;
 
 use colored::Colorize;
 use dotenv::dotenv;
+use reqwest::Client;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
@@ -18,15 +19,22 @@ struct Article {
 
 #[derive(Deserialize, Debug)]
 struct Articles {
-    articles: Vec<Article>, // source: String,
+    articles: Vec<Article>,
 }
 
-fn get_top_headlines(url: &str) -> Result<Articles, Box<dyn Error>> {
-    let req = reqwest::blocking::get(url)?;
+async fn get_top_headlines(client: &Client, url: &str) -> Result<Articles, String> {
+    let response = match client.get(url).send().await {
+        Ok(res) => res,
+        Err(e) => return Err(format!("Failed to send request: {}", e)),
+    };
 
-    let articles: Articles = req.json()?;
-
-    Ok(articles)
+    match response.status() {
+        reqwest::StatusCode::OK => match response.json::<Articles>().await {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err(format!("Failed to parse JSON response: {}", e)),
+        },
+        other => Err(format!("Unexpected response status: {}", other)),
+    }
 }
 
 fn render_top_headlines(articles: &Articles) {
@@ -43,29 +51,27 @@ fn render_top_headlines(articles: &Articles) {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     dotenv().ok();
 
     let api_key: String = match env::var("NEWS_API_KEY") {
         Ok(v) => v,
-        Err(_) => panic!("news api key is required"),
+        Err(_) => {
+            eprintln!("{}", "Error: NEWS_API_KEY is required.".red());
+            return;
+        }
     };
 
-    // make request to news api
     let url = format!(
         "https://newsapi.org/v2/top-headlines?country=us&apiKey={apiKey}",
         apiKey = api_key
     );
 
-    let data = get_top_headlines(url.as_str());
+    let client: reqwest::Client = reqwest::Client::new();
 
-    let articles = match data {
-        Ok(articles) => articles,
-        Err(err) => {
-            println!("{}, Error: {}", "something went wrong".red(), err);
-            return;
-        }
-    };
-
-    render_top_headlines(&articles);
+    match get_top_headlines(&client, &url).await {
+        Ok(articles) => render_top_headlines(&articles),
+        Err(err) => eprintln!("{} {}", "Error:".red(), err),
+    }
 }
